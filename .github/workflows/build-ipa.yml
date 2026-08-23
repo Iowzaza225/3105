@@ -1,4 +1,4 @@
-name: Build 3105 IPA
+name: Build 3105 HOME PATCH IPA
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ jobs:
       - name: Verify source zip
         shell: bash
         run: |
-          SOURCE_ZIP="3105_HOME_FILES_PRIVACY_SEPARATE_SRC.zip"
+          SOURCE_ZIP="3105_HOME_PATCH_PRIVACY_SEPARATE_SRC.zip"
 
           if [ ! -f "$SOURCE_ZIP" ]; then
             echo "ERROR: Missing $SOURCE_ZIP"
@@ -35,7 +35,7 @@ jobs:
           rm -rf work
           mkdir -p work
 
-          unzip -q "3105_HOME_FILES_PRIVACY_SEPARATE_SRC.zip" -d work
+          unzip -q "3105_HOME_PATCH_PRIVACY_SEPARATE_SRC.zip" -d work
 
           echo "===== XCODE PROJECTS ====="
           find work -type d -name "*.xcodeproj" -print
@@ -112,21 +112,21 @@ jobs:
 
           cp -R "$APP" Payload/
 
-          rm -f 3105_HOME_FILES_unsigned.ipa
+          rm -f 3105_HOME_PATCH_unsigned.ipa
 
           zip -qry \
-            3105_HOME_FILES_unsigned.ipa \
+            3105_HOME_PATCH_unsigned.ipa \
             Payload
 
           echo ""
           echo "===== IPA CREATED ====="
-          ls -lh 3105_HOME_FILES_unsigned.ipa
+          ls -lh 3105_HOME_PATCH_unsigned.ipa
 
       - name: Upload build log on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: 3105-build-log
+          name: 3105-HOME-PATCH-build-log
           path: build.log
           if-no-files-found: ignore
 
@@ -134,6 +134,6 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: 3105-HOME-FILES-IPA
-          path: 3105_HOME_FILES_unsigned.ipa
+          name: 3105-HOME-PATCH-IPA
+          path: 3105_HOME_PATCH_unsigned.ipa
           if-no-files-found: error
