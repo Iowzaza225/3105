@@ -1,4 +1,4 @@
-name: Build 3105 HOME PATCH IPA
+name: Build 3105 iOS
 
 on:
   workflow_dispatch:
@@ -14,126 +14,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify source zip
-        shell: bash
-        run: |
-          SOURCE_ZIP="3105_HOME_PATCH_PRIVACY_SEPARATE_SRC.zip"
-
-          if [ ! -f "$SOURCE_ZIP" ]; then
-            echo "ERROR: Missing $SOURCE_ZIP"
-            echo "Files in repo root:"
-            ls -la
-            exit 1
-          fi
-
-          echo "FOUND SOURCE:"
-          ls -lh "$SOURCE_ZIP"
-
-      - name: Extract source
-        shell: bash
-        run: |
-          rm -rf work
-          mkdir -p work
-
-          unzip -q "3105_HOME_PATCH_PRIVACY_SEPARATE_SRC.zip" -d work
-
-          echo "===== XCODE PROJECTS ====="
-          find work -type d -name "*.xcodeproj" -print
-
       - name: Select Xcode
-        shell: bash
         run: |
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
           xcodebuild -version
 
-      - name: Build 3105
-        shell: bash
+      - name: Show project
         run: |
-          set +e
+          ls -la
+          find . -maxdepth 2 -name "*.xcodeproj" -o -name "*.xcworkspace"
 
-          PROJECT=$(find work -type d -name "*.xcodeproj" | head -1)
-
-          if [ -z "$PROJECT" ]; then
-            echo "ERROR: Xcode project not found"
-            exit 1
-          fi
-
-          SCHEME=$(xcodebuild \
-            -project "$PROJECT" \
-            -list \
-            -json | \
-            python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["project"]["schemes"][0])')
-
-          echo "PROJECT=$PROJECT"
-          echo "SCHEME=$SCHEME"
-
-          rm -rf build
-
+      - name: Build
+        run: |
           xcodebuild \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -configuration Release \
+            -project ThreeOneOSFive.xcodeproj \
+            -scheme ThreeOneOSFive \
             -sdk iphoneos \
-            -derivedDataPath build/DerivedData \
+            -configuration Release \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build \
-            2>&1 | tee build.log
+            build
 
-          STATUS=${PIPESTATUS[0]}
-
-          echo ""
-          echo "========== REAL XCODE ERRORS =========="
-          grep -nE ':[0-9]+:[0-9]+: (error|fatal error):' build.log || true
-          echo "======================================="
-
-          exit $STATUS
-
-      - name: Package IPA
-        if: success()
-        shell: bash
+      - name: Package app
         run: |
-          APP=$(find build/DerivedData/Build/Products/Release-iphoneos \
-            -maxdepth 1 \
-            -type d \
-            -name "*.app" \
-            | head -1)
+          mkdir -p output
+          APP_PATH=$(find build/Build/Products -name "*.app" -type d | head -n 1)
 
-          if [ -z "$APP" ]; then
-            echo "ERROR: Built .app not found"
+          if [ -z "$APP_PATH" ]; then
+            echo "APP not found"
             exit 1
           fi
 
-          echo "Built app: $APP"
+          cp -R "$APP_PATH" output/
 
-          rm -rf Payload
-          mkdir -p Payload
-
-          cp -R "$APP" Payload/
-
-          rm -f 3105_HOME_PATCH_unsigned.ipa
-
-          zip -qry \
-            3105_HOME_PATCH_unsigned.ipa \
-            Payload
-
-          echo ""
-          echo "===== IPA CREATED ====="
-          ls -lh 3105_HOME_PATCH_unsigned.ipa
-
-      - name: Upload build log on failure
-        if: failure()
+      - name: Upload build
         uses: actions/upload-artifact@v4
         with:
-          name: 3105-HOME-PATCH-build-log
-          path: build.log
-          if-no-files-found: ignore
-
-      - name: Upload IPA
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: 3105-HOME-PATCH-IPA
-          path: 3105_HOME_PATCH_unsigned.ipa
-          if-no-files-found: error
+          name: 3105-iOS-Build
+          path: output/
