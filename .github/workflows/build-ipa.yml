@@ -19,19 +19,85 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
           xcodebuild -version
 
+      - name: Find Xcode project
+        shell: bash
+        run: |
+          echo "Searching for Xcode project..."
+
+          PROJECT=$(find . -name "*.xcodeproj" -type d -print -quit)
+
+          if [ -z "$PROJECT" ]; then
+            echo "❌ No .xcodeproj found"
+            echo "Repository structure:"
+            find . -maxdepth 4 -print
+            exit 1
+          fi
+
+          echo "✅ Found project:"
+          echo "$PROJECT"
+
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+
       - name: Check project
         run: |
-          cd 3105-main
-          ls -la
-          xcodebuild -list -project ThreeOneOSFive.xcodeproj
+          echo "Project: $PROJECT"
+          xcodebuild -list -project "$PROJECT"
+
+      - name: Find target
+        shell: bash
+        run: |
+          echo "Checking available targets..."
+
+          xcodebuild \
+            -list \
+            -json \
+            -project "$PROJECT" \
+            > project.json
+
+          python3 - <<'PY'
+          import json
+
+          with open("project.json", "r") as f:
+              data = json.load(f)
+
+          targets = data["project"].get("targets", [])
+
+          print("Available targets:")
+          for target in targets:
+              print(" -", target)
+
+          if not targets:
+              raise SystemExit("❌ No targets found")
+
+          preferred = None
+
+          for target in targets:
+              if target == "3105":
+                  preferred = target
+                  break
+
+          if preferred is None:
+              preferred = targets[0]
+
+          print("Using target:", preferred)
+
+          with open("target.txt", "w") as f:
+              f.write(preferred)
+          PY
+
+          TARGET=$(cat target.txt)
+
+          echo "TARGET=$TARGET" >> "$GITHUB_ENV"
 
       - name: Build
         run: |
-          cd 3105-main
+          echo "Building:"
+          echo "Project = $PROJECT"
+          echo "Target  = $TARGET"
 
           xcodebuild \
-            -project ThreeOneOSFive.xcodeproj \
-            -target 3105 \
+            -project "$PROJECT" \
+            -target "$TARGET" \
             -sdk iphoneos \
             -configuration Release \
             -derivedDataPath build \
@@ -39,27 +105,40 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             build
 
-      - name: Find app
+      - name: Find built app
+        shell: bash
         run: |
-          find 3105-main/build -name "*.app" -type d -print
+          echo "Searching for .app..."
 
-      - name: Package app
-        run: |
-          mkdir -p output
-
-          APP_PATH=$(find 3105-main/build/Build/Products \
+          APP_PATH=$(find build \
             -name "*.app" \
-            -type d | head -n 1)
+            -type d \
+            -print -quit)
 
           if [ -z "$APP_PATH" ]; then
-            echo "❌ ไม่พบ .app"
+            echo "❌ No .app found"
+            find build -maxdepth 6 -print
             exit 1
           fi
 
+          echo "✅ App found:"
+          echo "$APP_PATH"
+
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Package app
+        shell: bash
+        run: |
+          mkdir -p output
+
           cp -R "$APP_PATH" output/3105.app
+
+          echo "Packaged:"
+          ls -la output
 
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
           name: 3105-iOS-Build
           path: output/3105.app
+          if-no-files-found: error
