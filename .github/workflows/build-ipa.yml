@@ -19,16 +19,19 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
           xcodebuild -version
 
-      - name: Show project
+      - name: Check project
         run: |
+          cd 3105-main
           ls -la
-          find . -maxdepth 2 -name "*.xcodeproj" -o -name "*.xcworkspace"
+          xcodebuild -list -project ThreeOneOSFive.xcodeproj
 
       - name: Build
         run: |
+          cd 3105-main
+
           xcodebuild \
             -project ThreeOneOSFive.xcodeproj \
-            -scheme ThreeOneOSFive \
+            -target 3105 \
             -sdk iphoneos \
             -configuration Release \
             -derivedDataPath build \
@@ -36,20 +39,27 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             build
 
+      - name: Find app
+        run: |
+          find 3105-main/build -name "*.app" -type d -print
+
       - name: Package app
         run: |
           mkdir -p output
-          APP_PATH=$(find build/Build/Products -name "*.app" -type d | head -n 1)
+
+          APP_PATH=$(find 3105-main/build/Build/Products \
+            -name "*.app" \
+            -type d | head -n 1)
 
           if [ -z "$APP_PATH" ]; then
-            echo "APP not found"
+            echo "❌ ไม่พบ .app"
             exit 1
           fi
 
-          cp -R "$APP_PATH" output/
+          cp -R "$APP_PATH" output/3105.app
 
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
           name: 3105-iOS-Build
-          path: output/
+          path: output/3105.app
