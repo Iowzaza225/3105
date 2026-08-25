@@ -11,42 +11,97 @@ jobs:
     runs-on: macos-15
 
     steps:
+      # 1. ดึง Repository
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 2. เตรียม Xcode
       - name: Select Xcode
         run: |
           sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
           xcodebuild -version
 
-      - name: Find Xcode project
+      # 3. ค้นหา Xcode project
+      #    ถ้าไม่มี .xcodeproj แต่มี ZIP ให้แตก ZIP ก่อน
+      - name: Prepare source
         shell: bash
         run: |
-          echo "Searching for Xcode project..."
+          set -e
 
-          PROJECT=$(find . -name "*.xcodeproj" -type d -print -quit)
+          echo "===== Repository ====="
+          find . \
+            -not -path './.git/*' \
+            -maxdepth 3 \
+            -print | head -300
 
+          echo ""
+          echo "===== Search Xcode project ====="
+
+          PROJECT=$(find . \
+            -not -path './.git/*' \
+            -name "*.xcodeproj" \
+            -type d \
+            -print -quit)
+
+          # ถ้าไม่เจอ .xcodeproj ให้ค้นหา ZIP
           if [ -z "$PROJECT" ]; then
-            echo "❌ No .xcodeproj found"
-            echo "Repository structure:"
-            find . -maxdepth 4 -print
+            ZIP=$(find . \
+              -not -path './.git/*' \
+              -name "*.zip" \
+              -type f \
+              -print -quit)
+
+            if [ -n "$ZIP" ]; then
+              echo "พบ ZIP:"
+              echo "$ZIP"
+
+              mkdir -p extracted
+              unzip -o "$ZIP" -d extracted
+
+              PROJECT=$(find extracted \
+                -not -path '*/.git/*' \
+                -name "*.xcodeproj" \
+                -type d \
+                -print -quit)
+            fi
+          fi
+
+          # ตรวจสอบอีกครั้ง
+          if [ -z "$PROJECT" ]; then
+            echo ""
+            echo "❌ ไม่พบ .xcodeproj"
+            echo ""
+            echo "ไฟล์ที่มีอยู่:"
+            find . \
+              -not -path './.git/*' \
+              -maxdepth 5 \
+              -print
             exit 1
           fi
 
-          echo "✅ Found project:"
+          echo ""
+          echo "✅ Xcode project:"
           echo "$PROJECT"
 
           echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
 
+      # 4. แสดง Project / Target / Scheme
       - name: Check project
+        shell: bash
         run: |
-          echo "Project: $PROJECT"
-          xcodebuild -list -project "$PROJECT"
+          set -e
 
+          echo "PROJECT = $PROJECT"
+
+          xcodebuild \
+            -list \
+            -project "$PROJECT"
+
+      # 5. หา Target อัตโนมัติ
       - name: Find target
         shell: bash
         run: |
-          echo "Checking available targets..."
+          set -e
 
           xcodebuild \
             -list \
@@ -54,46 +109,58 @@ jobs:
             -project "$PROJECT" \
             > project.json
 
-          python3 - <<'PY'
+          python3 <<'PY'
           import json
 
           with open("project.json", "r") as f:
               data = json.load(f)
 
-          targets = data["project"].get("targets", [])
+          project = data.get("project", {})
+          targets = project.get("targets", [])
 
-          print("Available targets:")
+          print("===== TARGETS =====")
+
           for target in targets:
-              print(" -", target)
+              print(target)
 
           if not targets:
-              raise SystemExit("❌ No targets found")
+              raise SystemExit("❌ ไม่พบ Target")
 
-          preferred = None
+          # เลือก target 3105 ก่อน
+          target = None
 
-          for target in targets:
-              if target == "3105":
-                  preferred = target
+          for item in targets:
+              if item == "3105":
+                  target = item
                   break
 
-          if preferred is None:
-              preferred = targets[0]
+          # ถ้าไม่มี 3105 ใช้ target ตัวแรก
+          if target is None:
+              target = targets[0]
 
-          print("Using target:", preferred)
+          print("")
+          print("✅ Selected target:", target)
 
           with open("target.txt", "w") as f:
-              f.write(preferred)
+              f.write(target)
           PY
 
           TARGET=$(cat target.txt)
 
           echo "TARGET=$TARGET" >> "$GITHUB_ENV"
 
+      # 6. Build
       - name: Build
+        shell: bash
         run: |
-          echo "Building:"
-          echo "Project = $PROJECT"
-          echo "Target  = $TARGET"
+          set -e
+
+          echo "=============================="
+          echo "BUILD 3105"
+          echo "=============================="
+          echo "Project: $PROJECT"
+          echo "Target : $TARGET"
+          echo ""
 
           xcodebuild \
             -project "$PROJECT" \
@@ -105,10 +172,13 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             build
 
+      # 7. หา .app
       - name: Find built app
         shell: bash
         run: |
-          echo "Searching for .app..."
+          set -e
+
+          echo "===== SEARCH APP ====="
 
           APP_PATH=$(find build \
             -name "*.app" \
@@ -116,26 +186,36 @@ jobs:
             -print -quit)
 
           if [ -z "$APP_PATH" ]; then
-            echo "❌ No .app found"
-            find build -maxdepth 6 -print
+            echo "❌ ไม่พบ .app"
+
+            echo ""
+            echo "Build directory:"
+            find build \
+              -maxdepth 7 \
+              -print || true
+
             exit 1
           fi
 
-          echo "✅ App found:"
+          echo "✅ APP:"
           echo "$APP_PATH"
 
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
+      # 8. Package
       - name: Package app
         shell: bash
         run: |
+          set -e
+
           mkdir -p output
 
           cp -R "$APP_PATH" output/3105.app
 
-          echo "Packaged:"
-          ls -la output
+          echo "===== OUTPUT ====="
+          ls -lah output
 
+      # 9. Upload Artifact
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
