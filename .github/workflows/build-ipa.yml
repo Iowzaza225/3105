@@ -40,7 +40,6 @@ jobs:
             exit 1
           fi
 
-          # Optional overlay. Files committed under overlay/ mirror paths inside the project root.
           if [ -d overlay ]; then
             echo "Applying overlay files..."
             cp -R overlay/. "$ROOT/"
@@ -55,6 +54,13 @@ jobs:
             -type f \
             \( -name '*.swift' -o -name '*.m' -o -name '*.h' -o -name '*.c' -o -name '*.plist' -o -name '*.strings' -o -name 'project.pbxproj' -o -name '*.json' \) \
             -print0 | sort -z | xargs -0 shasum -a 256
+
+      - name: Upload base source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: HTVANTIX-base-source-snapshot
+          path: 3105_HOME_UI_PHASE1_HOME.zip
+          if-no-files-found: error
 
       - name: Inspect project
         shell: bash
