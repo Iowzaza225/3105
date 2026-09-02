@@ -1,4 +1,4 @@
-name: Build 3105 iOS
+name: Build HTVANTIX iOS
 
 on:
   workflow_dispatch:
@@ -11,214 +11,93 @@ jobs:
     runs-on: macos-15
 
     steps:
-      # 1. ดึง Repository
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. เตรียม Xcode
       - name: Select Xcode
         run: |
           sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
           xcodebuild -version
 
-      # 3. ค้นหา Xcode project
-      #    ถ้าไม่มี .xcodeproj แต่มี ZIP ให้แตก ZIP ก่อน
       - name: Prepare source
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          echo "===== Repository ====="
-          find . \
-            -not -path './.git/*' \
-            -maxdepth 3 \
-            -print | head -300
-
-          echo ""
-          echo "===== Search Xcode project ====="
-
-          PROJECT=$(find . \
-            -not -path './.git/*' \
-            -name "*.xcodeproj" \
-            -type d \
-            -print -quit)
-
-          # ถ้าไม่เจอ .xcodeproj ให้ค้นหา ZIP
-          if [ -z "$PROJECT" ]; then
-            ZIP=$(find . \
-              -not -path './.git/*' \
-              -name "*.zip" \
-              -type f \
-              -print -quit)
-
-            if [ -n "$ZIP" ]; then
-              echo "พบ ZIP:"
-              echo "$ZIP"
-
-              mkdir -p extracted
-              unzip -o "$ZIP" -d extracted
-
-              PROJECT=$(find extracted \
-                -not -path '*/.git/*' \
-                -name "*.xcodeproj" \
-                -type d \
-                -print -quit)
-            fi
-          fi
-
-          # ตรวจสอบอีกครั้ง
-          if [ -z "$PROJECT" ]; then
-            echo ""
-            echo "❌ ไม่พบ .xcodeproj"
-            echo ""
-            echo "ไฟล์ที่มีอยู่:"
-            find . \
-              -not -path './.git/*' \
-              -maxdepth 5 \
-              -print
+          ZIP="3105_HOME_UI_PHASE1_HOME.zip"
+          if [ ! -f "$ZIP" ]; then
+            echo "ERROR: $ZIP not found"
             exit 1
           fi
 
-          echo ""
-          echo "✅ Xcode project:"
-          echo "$PROJECT"
+          rm -rf extracted
+          mkdir -p extracted
+          unzip -o "$ZIP" -d extracted
 
-          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+          ROOT="$(find extracted -type d -name 'ThreeOneOSFive.xcodeproj' -print -quit | xargs dirname)"
+          if [ -z "$ROOT" ] || [ ! -d "$ROOT/ThreeOneOSFive.xcodeproj" ]; then
+            echo "ERROR: project root not found"
+            exit 1
+          fi
 
-      # 4. แสดง Project / Target / Scheme
-      - name: Check project
+          # Optional overlay. Files committed under overlay/ mirror paths inside the project root.
+          if [ -d overlay ]; then
+            echo "Applying overlay files..."
+            cp -R overlay/. "$ROOT/"
+          fi
+
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "PROJECT=$ROOT/ThreeOneOSFive.xcodeproj" >> "$GITHUB_ENV"
+          echo "SCHEME=3105" >> "$GITHUB_ENV"
+
+          echo "===== SOURCE HASHES ====="
+          find "$ROOT/ThreeOneOSFive" "$ROOT/ThreeOneOSFive.xcodeproj" \
+            -type f \
+            \( -name '*.swift' -o -name '*.m' -o -name '*.h' -o -name '*.c' -o -name '*.plist' -o -name '*.strings' -o -name 'project.pbxproj' -o -name '*.json' \) \
+            -print0 | sort -z | xargs -0 shasum -a 256
+
+      - name: Inspect project
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
+          xcodebuild -project "$PROJECT" -list
 
-          echo "PROJECT = $PROJECT"
-
-          xcodebuild \
-            -list \
-            -project "$PROJECT"
-
-      # 5. หา Target อัตโนมัติ
-      - name: Find target
-        shell: bash
-        run: |
-          set -e
-
-          xcodebuild \
-            -list \
-            -json \
-            -project "$PROJECT" \
-            > project.json
-
-          python3 <<'PY'
-          import json
-
-          with open("project.json", "r") as f:
-              data = json.load(f)
-
-          project = data.get("project", {})
-          targets = project.get("targets", [])
-
-          print("===== TARGETS =====")
-
-          for target in targets:
-              print(target)
-
-          if not targets:
-              raise SystemExit("❌ ไม่พบ Target")
-
-          # เลือก target 3105 ก่อน
-          target = None
-
-          for item in targets:
-              if item == "3105":
-                  target = item
-                  break
-
-          # ถ้าไม่มี 3105 ใช้ target ตัวแรก
-          if target is None:
-              target = targets[0]
-
-          print("")
-          print("✅ Selected target:", target)
-
-          with open("target.txt", "w") as f:
-              f.write(target)
-          PY
-
-          TARGET=$(cat target.txt)
-
-          echo "TARGET=$TARGET" >> "$GITHUB_ENV"
-
-      # 6. Build
       - name: Build
         shell: bash
         run: |
-          set -e
-
-          echo "=============================="
-          echo "BUILD 3105"
-          echo "=============================="
-          echo "Project: $PROJECT"
-          echo "Target : $TARGET"
-          echo ""
-
+          set -euo pipefail
+          rm -rf build
           xcodebuild \
             -project "$PROJECT" \
-            -target "$TARGET" \
-            -sdk iphoneos \
+            -scheme "$SCHEME" \
             -configuration Release \
+            -sdk iphoneos \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             build
 
-      # 7. หา .app
-      - name: Find built app
+      - name: Package unsigned IPA
         shell: bash
         run: |
-          set -e
-
-          echo "===== SEARCH APP ====="
-
-          APP_PATH=$(find build \
-            -name "*.app" \
-            -type d \
-            -print -quit)
-
-          if [ -z "$APP_PATH" ]; then
-            echo "❌ ไม่พบ .app"
-
-            echo ""
-            echo "Build directory:"
-            find build \
-              -maxdepth 7 \
-              -print || true
-
+          set -euo pipefail
+          APP="$(find build -type d -name '*.app' -print -quit)"
+          if [ -z "$APP" ]; then
+            echo "ERROR: .app not found"
+            find build -maxdepth 7 -print || true
             exit 1
           fi
 
-          echo "✅ APP:"
-          echo "$APP_PATH"
+          rm -rf Payload HTVANTIX-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          /usr/bin/zip -qry HTVANTIX-unsigned.ipa Payload
+          ls -lh HTVANTIX-unsigned.ipa
 
-          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
-
-      # 8. Package
-      - name: Package app
-        shell: bash
-        run: |
-          set -e
-
-          mkdir -p output
-
-          cp -R "$APP_PATH" output/3105.app
-
-          echo "===== OUTPUT ====="
-          ls -lah output
-
-      # 9. Upload Artifact
-      - name: Upload build
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: 3105-iOS-Build
-          path: output/3105.app
+          name: HTVANTIX-unsigned-IPA
+          path: HTVANTIX-unsigned.ipa
           if-no-files-found: error
