@@ -62,6 +62,26 @@ jobs:
           path: RUIZEN_CLIENT_BUILD10.zip
           if-no-files-found: error
 
+      - name: Prepare RUIZEN app identity and icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, plistlib, subprocess
+          root = pathlib.Path(os.environ["ROOT"])
+          p = root / "ThreeOneOSFive/Info.plist"
+          info = plistlib.loads(p.read_bytes())
+          info["CFBundleDisplayName"] = "RUIZEN-CLIENT"
+          info["CFBundleName"] = "RUIZEN-CLIENT"
+          info["CFBundleVersion"] = "11"
+          p.write_bytes(plistlib.dumps(info))
+          logo = root / "ThreeOneOSFive/Assets.xcassets/HTVLogo.imageset/HTVLogo.jpeg"
+          icon = root / "ThreeOneOSFive/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
+          subprocess.run(["sips", "-s", "format", "png", "-z", "1024", "1024", str(logo), "--out", str(icon)], check=True)
+          assert icon.read_bytes().startswith(b"\x89PNG")
+          print("RUIZEN-CLIENT: source name and logo prepared, build 11")
+          PY
+
       - name: Inspect project
         shell: bash
         run: |
@@ -79,6 +99,8 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \
+            PRODUCT_NAME="RUIZEN-CLIENT" \
+            CURRENT_PROJECT_VERSION=11 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -95,6 +117,27 @@ jobs:
             exit 1
           fi
 
+          python3 - "$APP" <<'PY'
+          import pathlib, plistlib, sys, subprocess
+          app = pathlib.Path(sys.argv[1])
+          p = app / "Info.plist"
+          info = plistlib.loads(p.read_bytes())
+          info["CFBundleDisplayName"] = "RUIZEN-CLIENT"
+          info["CFBundleName"] = "RUIZEN-CLIENT"
+          info["CFBundleVersion"] = "11"
+          p.write_bytes(plistlib.dumps(info, fmt=plistlib.FMT_BINARY))
+          for localized in app.glob("*.lproj/InfoPlist.strings"):
+              subprocess.run(["plutil", "-convert", "xml1", str(localized)], check=True)
+              values = plistlib.loads(localized.read_bytes())
+              for key in ("CFBundleDisplayName", "CFBundleName"):
+                  if key in values: values[key] = "RUIZEN-CLIENT"
+              localized.write_bytes(plistlib.dumps(values, fmt=plistlib.FMT_BINARY))
+          assert info["CFBundleIdentifier"] == "com.apple.mobile.MobileHouseArrest"
+          assert (app / info["CFBundleExecutable"]).is_file()
+          assert list(app.glob("AppIcon*.png")), "Compiled app icon missing"
+          print("Verified packaged app:", info["CFBundleDisplayName"], info["CFBundleName"], info["CFBundleVersion"])
+          PY
+
           rm -rf Payload RUIZEN-CLIENT-unsigned.ipa
           mkdir -p Payload
           cp -R "$APP" Payload/
@@ -104,6 +147,6 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: RUIZEN-CLIENT-unsigned-IPA
+          name: RUIZEN-CLIENT-BUILD11-unsigned-IPA
           path: RUIZEN-CLIENT-unsigned.ipa
           if-no-files-found: error
