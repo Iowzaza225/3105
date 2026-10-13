@@ -1,4 +1,4 @@
-name: Build HTVANTIX iOS
+name: Build RUIZEN-CLIENT iOS
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP="3105_HOME_UI_PHASE1_HOME.zip"
+          ZIP="RUIZEN_CLIENT_BUILD10.zip"
           if [ ! -f "$ZIP" ]; then
             echo "ERROR: $ZIP not found"
             exit 1
@@ -58,8 +58,8 @@ jobs:
       - name: Upload base source snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: HTVANTIX-base-source-snapshot
-          path: 3105_HOME_UI_PHASE1_HOME.zip
+          name: RUIZEN-CLIENT-base-source-snapshot
+          path: RUIZEN_CLIENT_BUILD10.zip
           if-no-files-found: error
 
       - name: Inspect project
@@ -95,15 +95,15 @@ jobs:
             exit 1
           fi
 
-          rm -rf Payload HTVANTIX-unsigned.ipa
+          rm -rf Payload RUIZEN-CLIENT-unsigned.ipa
           mkdir -p Payload
           cp -R "$APP" Payload/
-          /usr/bin/zip -qry HTVANTIX-unsigned.ipa Payload
-          ls -lh HTVANTIX-unsigned.ipa
+          /usr/bin/zip -qry RUIZEN-CLIENT-unsigned.ipa Payload
+          ls -lh RUIZEN-CLIENT-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: HTVANTIX-unsigned-IPA
-          path: HTVANTIX-unsigned.ipa
+          name: RUIZEN-CLIENT-unsigned-IPA
+          path: RUIZEN-CLIENT-unsigned.ipa
           if-no-files-found: error
