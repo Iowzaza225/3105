@@ -22,7 +22,7 @@ s=one(s,'    @Published private(set) var recordDescription = ""\n','''    @Publi
     /// Excludes the sensitive pairing record and cryptographic keys.
     var diagnosticSummary: String {
         let v = ProcessInfo.processInfo.operatingSystemVersion
-        return "RUIZEN CLIENT Build 11 | iOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)\nPairing: \(recordDescription)\nTCP: \(transportStatus)\nEndpoint: \(transportEndpoint)\nRSD Pair-Verify: NOT TESTED\nFilesystem / exploit support: NOT TESTED"
+        return "RUIZEN CLIENT Build 11 | iOS \\(v.majorVersion).\\(v.minorVersion).\\(v.patchVersion)\\nPairing: \\(recordDescription)\\nTCP: \\(transportStatus)\\nEndpoint: \\(transportEndpoint)\\nRSD Pair-Verify: NOT TESTED\\nFilesystem / exploit support: NOT TESTED"
     }
 ''')
 s=one(s,'''            refresh()
