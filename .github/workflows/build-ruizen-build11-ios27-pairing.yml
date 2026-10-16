@@ -209,14 +209,14 @@ jobs:
           rm -rf Payload RUIZEN-CLIENT-BUILD11-iOS27-Pairing-unsigned.ipa
           mkdir -p Payload
           cp -R "$APP" Payload/
-          /usr/bin/zip -qry RUIZEN-CLIENT-unsigned.ipa Payload
-          ls -lh RUIZEN-CLIENT-unsigned.ipa
+          /usr/bin/zip -qry RUIZEN-CLIENT-BUILD11-iOS27-Pairing-unsigned.ipa Payload
+          ls -lh RUIZEN-CLIENT-BUILD11-iOS27-Pairing-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: RUIZEN-CLIENT-BUILD11-iOS27-Pairing-unsigned-IPA
-          path: RUIZEN-CLIENT-unsigned.ipa
+          path: RUIZEN-CLIENT-BUILD11-iOS27-Pairing-unsigned.ipa
           if-no-files-found: error
 
       - name: Upload native and Xcode build logs if unsuccessful
