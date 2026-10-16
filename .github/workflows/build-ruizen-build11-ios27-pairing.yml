@@ -111,6 +111,7 @@ jobs:
           PY
           plutil -lint ThreeOneOSFive/Info.plist
           plutil -lint ThreeOneOSFive.xcodeproj/project.pbxproj
+          python3 "$GITHUB_WORKSPACE/pairing-integration/add_connectivity_diagnostics.py" "$GITHUB_WORKSPACE/$ROOT"
 
       - name: Compile native Rust Pairing for arm64 iPhone
         shell: bash
