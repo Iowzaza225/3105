@@ -168,7 +168,7 @@ jobs:
             CURRENT_PROJECT_VERSION=11 \
             OTHER_SWIFT_FLAGS="-D RUIZEN_PAIRING_ENABLED" \
             OTHER_CFLAGS="-DRUIZEN_PAIRING_ENABLED" \
-            OTHER_LDFLAGS="\$(inherited) $ROOT/pairing-native/target/aarch64-apple-ios/release/libruizen_pairing.a -lc++ -framework Security" \
+            OTHER_LDFLAGS="\$(inherited) $GITHUB_WORKSPACE/$ROOT/pairing-native/target/aarch64-apple-ios/release/libruizen_pairing.a -lc++ -framework Security" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
