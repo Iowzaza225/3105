@@ -1,0 +1,237 @@
+name: Build RUIZEN-CLIENT Build16 + AFC Write Readback
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ruizen-build16-afc-write-verify
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Prepare source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP="RUIZEN_CLIENT_BUILD10.zip"
+          if [ ! -f "$ZIP" ]; then
+            echo "ERROR: $ZIP not found"
+            exit 1
+          fi
+
+          rm -rf extracted
+          mkdir -p extracted
+          unzip -o "$ZIP" -d extracted
+
+          ROOT="$(find extracted -type d -name 'ThreeOneOSFive.xcodeproj' -print -quit | xargs dirname)"
+          if [ -z "$ROOT" ] || [ ! -d "$ROOT/ThreeOneOSFive.xcodeproj" ]; then
+            echo "ERROR: project root not found"
+            exit 1
+          fi
+
+          if [ -d overlay ]; then
+            echo "Applying overlay files..."
+            cp -R overlay/. "$ROOT/"
+          fi
+
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "PROJECT=$ROOT/ThreeOneOSFive.xcodeproj" >> "$GITHUB_ENV"
+          echo "SCHEME=3105" >> "$GITHUB_ENV"
+
+          echo "===== SOURCE HASHES ====="
+          find "$ROOT/ThreeOneOSFive" "$ROOT/ThreeOneOSFive.xcodeproj" \
+            -type f \
+            \( -name '*.swift' -o -name '*.m' -o -name '*.h' -o -name '*.c' -o -name '*.plist' -o -name '*.strings' -o -name 'project.pbxproj' -o -name '*.json' \) \
+            -print0 | sort -z | xargs -0 shasum -a 256
+
+      - name: Add iOS 27 Pair-on-this-iPhone module from original Build 11 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, zlib, hashlib, os
+          chunks = [Path(f'pairing-integration/patch.part{i:02d}.b64').read_text().strip() for i in range(1, 6)]
+          raw = zlib.decompress(base64.urlsafe_b64decode(''.join(chunks)))
+          expected = '800223b2a4cc43b40020c0ef5c1fdb4522e7493eb3e97b7641f5ba893ee6e973'
+          got = hashlib.sha256(raw).hexdigest()
+          if got != expected:
+              raise SystemExit(f'Pairing patch digest mismatch: {got}')
+          root = Path(os.environ['ROOT'])
+          (root / 'pairing-source.patch').write_bytes(raw)
+          print('Verified pairing patch:', got)
+          PY
+          cd "$ROOT"
+          mkdir -p pairing-native/src pairing-native/include ThreeOneOSFive/helpers ThreeOneOSFive/views
+          patch -p1 --batch --forward < pairing-source.patch
+          test -f pairing-native/src/lib.rs
+          test -f ThreeOneOSFive/helpers/RuizenPairingController.swift
+          test -f ThreeOneOSFive/views/RuizenPairingView.swift
+
+          # Expose the C API to Swift's bridging PCH, then apply Rust compiler fixes
+          # which have passed in the isolated pairing test project.
+          python3 - <<'PY'
+          from pathlib import Path
+          bridge=Path('ThreeOneOSFive/ThreeOneOSFive-Bridging-Header.h')
+          before=bridge.read_text()
+          old='#ifdef RUIZEN_PAIRING_ENABLED\n#import "../pairing-native/include/ruizen_pairing.h"\n#endif'
+          if before.count(old)!=1:
+              raise SystemExit('Pairing C bridging import is missing or unexpected')
+          bridge.write_text(before.replace(old,'#import "../pairing-native/include/ruizen_pairing.h"'))
+
+          manifest=Path('pairing-native/Cargo.toml')
+          before=manifest.read_text()
+          old='features = ["rt", "net", "time"]'
+          if before.count(old)!=1:
+              raise SystemExit('Tokio configuration mismatch')
+          manifest.write_text(before.replace(old, 'features = ["rt", "net", "time", "macros"]'))
+
+          rust=Path('pairing-native/src/lib.rs')
+          body=rust.read_text()
+          a='    let handshake = host.accept(&mut file, move |pin| async move {'
+          b='    let peer = loop {'
+          c='    };\n    // Never claim success'
+          if any(body.count(t)!=1 for t in (a,b,c)):
+              raise SystemExit('Rust pairing future structure mismatch')
+          body=body.replace(a, '    let peer = {\n'+a,1)
+          body=body.replace(b, '    loop {',1)
+          body=body.replace(c, '    }\n    };\n    // Never claim success',1)
+          rust.write_text(body)
+          PY
+          plutil -lint ThreeOneOSFive/Info.plist
+          plutil -lint ThreeOneOSFive.xcodeproj/project.pbxproj
+          python3 "$GITHUB_WORKSPACE/pairing-integration/add_connectivity_diagnostics.py" "$GITHUB_WORKSPACE/$ROOT"
+          python3 "$GITHUB_WORKSPACE/pairing-integration/add_rsd_listener_probe.py" "$GITHUB_WORKSPACE/$ROOT"
+          python3 "$GITHUB_WORKSPACE/pairing-integration/add_pairverify_probe.py" "$GITHUB_WORKSPACE/$ROOT"
+          python3 "$GITHUB_WORKSPACE/pairing-integration/add_secure_tunnel_probe.py" "$GITHUB_WORKSPACE/$ROOT"
+          python3 "$GITHUB_WORKSPACE/pairing-integration/add_rsd_handshake_probe.py" "$GITHUB_WORKSPACE/$ROOT"
+          python3 "$GITHUB_WORKSPACE/pairing-integration/add_afc_write_verify_probe.py" "$GITHUB_WORKSPACE/$ROOT"
+
+      - name: Compile native Rust Pairing for arm64 iPhone
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add aarch64-apple-ios
+          cargo build --manifest-path "$ROOT/pairing-native/Cargo.toml" --release --target aarch64-apple-ios 2>&1 | tee "$GITHUB_WORKSPACE/rust-build.log"
+          test -s "$ROOT/pairing-native/target/aarch64-apple-ios/release/libruizen_pairing.a"
+
+      - name: Upload base source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUIZEN-CLIENT-base-source-snapshot
+          path: RUIZEN_CLIENT_BUILD10.zip
+          if-no-files-found: error
+
+      - name: Prepare RUIZEN app identity and icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, plistlib, subprocess
+          root = pathlib.Path(os.environ["ROOT"])
+          p = root / "ThreeOneOSFive/Info.plist"
+          info = plistlib.loads(p.read_bytes())
+          info["CFBundleDisplayName"] = "RUIZEN-CLIENT"
+          info["CFBundleName"] = "RUIZEN-CLIENT"
+          info["CFBundleVersion"] = "16"
+          p.write_bytes(plistlib.dumps(info))
+          logo = root / "ThreeOneOSFive/Assets.xcassets/HTVLogo.imageset/HTVLogo.jpeg"
+          icon = root / "ThreeOneOSFive/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
+          subprocess.run(["sips", "-s", "format", "png", "-z", "1024", "1024", str(logo), "--out", str(icon)], check=True)
+          assert icon.read_bytes().startswith(b"\x89PNG")
+          print("RUIZEN-CLIENT: source name and logo prepared, build 16")
+          PY
+
+      - name: Inspect project
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project "$PROJECT" -list
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            PRODUCT_NAME="RUIZEN-CLIENT" \
+            CURRENT_PROJECT_VERSION=16 \
+            OTHER_SWIFT_FLAGS="-D RUIZEN_PAIRING_ENABLED" \
+            OTHER_CFLAGS="-DRUIZEN_PAIRING_ENABLED" \
+            OTHER_LDFLAGS="\$(inherited) $GITHUB_WORKSPACE/$ROOT/pairing-native/target/aarch64-apple-ios/release/libruizen_pairing.a -lc++ -framework Security" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$(find build -type d -name '*.app' -print -quit)"
+          if [ -z "$APP" ]; then
+            echo "ERROR: .app not found"
+            find build -maxdepth 7 -print || true
+            exit 1
+          fi
+
+          python3 - "$APP" <<'PY'
+          import pathlib, plistlib, sys, subprocess
+          app = pathlib.Path(sys.argv[1])
+          p = app / "Info.plist"
+          info = plistlib.loads(p.read_bytes())
+          info["CFBundleDisplayName"] = "RUIZEN-CLIENT"
+          info["CFBundleName"] = "RUIZEN-CLIENT"
+          info["CFBundleVersion"] = "16"
+          p.write_bytes(plistlib.dumps(info, fmt=plistlib.FMT_BINARY))
+          for localized in app.glob("*.lproj/InfoPlist.strings"):
+              subprocess.run(["plutil", "-convert", "xml1", str(localized)], check=True)
+              values = plistlib.loads(localized.read_bytes())
+              for key in ("CFBundleDisplayName", "CFBundleName"):
+                  if key in values: values[key] = "RUIZEN-CLIENT"
+              localized.write_bytes(plistlib.dumps(values, fmt=plistlib.FMT_BINARY))
+          assert info["CFBundleIdentifier"] == "com.apple.mobile.MobileHouseArrest"
+          assert (app / info["CFBundleExecutable"]).is_file()
+          assert list(app.glob("AppIcon*.png")), "Compiled app icon missing"
+          print("Verified packaged app:", info["CFBundleDisplayName"], info["CFBundleName"], info["CFBundleVersion"])
+          PY
+
+          rm -rf Payload RUIZEN-CLIENT-BUILD16-iOS27-Pairing-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          /usr/bin/zip -qry RUIZEN-CLIENT-BUILD16-iOS27-Pairing-unsigned.ipa Payload
+          ls -lh RUIZEN-CLIENT-BUILD16-iOS27-Pairing-unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUIZEN-CLIENT-BUILD16-iOS27-Pairing-unsigned-IPA
+          path: RUIZEN-CLIENT-BUILD16-iOS27-Pairing-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Upload native and Xcode build logs if unsuccessful
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUIZEN-BUILD16-iOS27-Pairing-Build-Logs
+          path: |
+            rust-build.log
+            build/Logs/Build
+          if-no-files-found: ignore
+          retention-days: 7
