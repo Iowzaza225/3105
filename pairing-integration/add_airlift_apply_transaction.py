@@ -31,10 +31,12 @@ s=one(s,
         }
         let bundleIDs''')
 s=one(s,
-'''    ) throws {
+'''        allowChangedTargets: Bool = false
+    ) throws {
         let bundleIDs = try PatchTransaction.requiredBundleIdentifiers(for: receipt)
         try withResolvedContainers''',
-'''    ) throws {
+'''        allowChangedTargets: Bool = false
+    ) throws {
         if AirLiftDocumentsTransaction.owns(receipt) {
             try AirLiftDocumentsTransaction.restore(receipt, allowChangedTargets: allowChangedTargets)
             return
@@ -42,10 +44,12 @@ s=one(s,
         let bundleIDs = try PatchTransaction.requiredBundleIdentifiers(for: receipt)
         try withResolvedContainers''')
 s=one(s,
-'''    ) throws {
+'''        project: PatchProject
+    ) throws {
         let bundleIDs = try PatchTransaction.requiredBundleIdentifiers(for: receipt)
         try withResolvedContainers''',
-'''    ) throws {
+'''        project: PatchProject
+    ) throws {
         if AirLiftDocumentsTransaction.owns(receipt) {
             try AirLiftDocumentsTransaction.reset(receipt)
             return
