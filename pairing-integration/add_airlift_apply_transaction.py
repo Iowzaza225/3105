@@ -334,7 +334,12 @@ replacement='''            } catch let error as AirLiftPatchError {
                 await MainActor.run {'''
 # AirLiftPatchError must be visible from PatchProjectsView.
 file.write_text(file.read_text().replace('private struct AirLiftPatchError: LocalizedError {','struct AirLiftPatchError: LocalizedError {'))
-s=one(s,needle,replacement)
+start = s.index("    private func setServerPatchEnabled(")
+pre, block = s[:start], s[start:]
+if block.count(needle) < 1:
+    raise SystemExit("Apply action catch anchor missing")
+block = block.replace(needle, replacement, 1)
+s = pre + block
 view.write_text(s)
 for lang in ['en','vi','zh-Hans']:
     strings=root/f'ThreeOneOSFive/{lang}.lproj/Localizable.strings'
