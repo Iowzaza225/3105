@@ -1,10 +1,7 @@
-name: Build RUIZEN-CLIENT iOS
+name: Legacy RUIZEN Build 11 (manual backup)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build:
