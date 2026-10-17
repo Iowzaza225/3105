@@ -1,10 +1,10 @@
-name: Build RUIZENCLIENT Standard (Build 16)
+name: Build RUIZENCLIENT Standard (Build 17)
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - release/ruizenclient-standard-build16
+      - release/ruizenclient-standard-build17
 
 jobs:
   build:
@@ -68,6 +68,8 @@ jobs:
           set -euo pipefail
           python3 ci/apply_branding.py "$ROOT" branding/RuizenProfile.jpeg
           python3 ci/apply_catalog_status.py "$ROOT"
+          python3 ci/fix_catalog_origin.py "$ROOT"
+          xcrun swiftc -frontend -parse "$ROOT/ThreeOneOSFive/helpers/PatchProjectLibrary.swift"
           xcrun swiftc -frontend -parse "$ROOT/ThreeOneOSFive/views/PatchProjectsView.swift"
           xcrun swiftc -frontend -parse "$ROOT/ThreeOneOSFive/helpers/PatchProjectStore.swift"
           python3 - <<'PY'
@@ -77,7 +79,7 @@ jobs:
           info = plistlib.loads(p.read_bytes())
           info["CFBundleDisplayName"] = "RUIZENCLIENT"
           info["CFBundleName"] = "RUIZENCLIENT"
-          info["CFBundleVersion"] = "16"
+          info["CFBundleVersion"] = "17"
           p.write_bytes(plistlib.dumps(info))
           logo = root / "ThreeOneOSFive/Assets.xcassets/HTVLogo.imageset/HTVLogo.jpeg"
           icon = root / "ThreeOneOSFive/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
@@ -87,7 +89,7 @@ jobs:
           pbx = (root / "ThreeOneOSFive.xcodeproj/project.pbxproj").read_text()
           assert "airlift" not in pbx.lower(), "Unexpected AirLift linkage"
           assert "ContentView()" in (root / "ThreeOneOSFive/App.swift").read_text()
-          print("Verified RUIZENCLIENT STANDARD build 16: no AirLift source or linkage")
+          print("Verified RUIZENCLIENT STANDARD build 17: no AirLift source or linkage")
           PY
 
       - name: Inspect project
@@ -108,7 +110,7 @@ jobs:
             -sdk iphoneos \
             -derivedDataPath build \
             PRODUCT_NAME="RUIZENCLIENT" \
-            CURRENT_PROJECT_VERSION=16 \
+            CURRENT_PROJECT_VERSION=17 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -132,7 +134,7 @@ jobs:
           info = plistlib.loads(p.read_bytes())
           info["CFBundleDisplayName"] = "RUIZENCLIENT"
           info["CFBundleName"] = "RUIZENCLIENT"
-          info["CFBundleVersion"] = "16"
+          info["CFBundleVersion"] = "17"
           p.write_bytes(plistlib.dumps(info, fmt=plistlib.FMT_BINARY))
           for localized in app.glob("*.lproj/InfoPlist.strings"):
               subprocess.run(["plutil", "-convert", "xml1", str(localized)], check=True)
@@ -146,27 +148,27 @@ jobs:
           print("Verified packaged app:", info["CFBundleDisplayName"], info["CFBundleName"], info["CFBundleVersion"])
           PY
 
-          rm -rf Payload RUIZENCLIENT-STANDARD-BUILD16-unsigned.ipa
+          rm -rf Payload RUIZENCLIENT-STANDARD-BUILD17-unsigned.ipa
           mkdir -p Payload
           cp -R "$APP" Payload/
-          /usr/bin/zip -qry RUIZENCLIENT-STANDARD-BUILD16-unsigned.ipa Payload
+          /usr/bin/zip -qry RUIZENCLIENT-STANDARD-BUILD17-unsigned.ipa Payload
           python3 - <<'PY'
           import zipfile, plistlib
-          with zipfile.ZipFile("RUIZENCLIENT-STANDARD-BUILD16-unsigned.ipa") as z:
+          with zipfile.ZipFile("RUIZENCLIENT-STANDARD-BUILD17-unsigned.ipa") as z:
               paths = z.namelist()
               app_info = next(p for p in paths if p.startswith("Payload/") and p.count("/")==2 and p.endswith("/Info.plist"))
               info = plistlib.loads(z.read(app_info))
               assert info["CFBundleName"] == "RUIZENCLIENT"
               assert info["CFBundleDisplayName"] == "RUIZENCLIENT"
-              assert info["CFBundleVersion"] == "16"
+              assert info["CFBundleVersion"] == "17"
               assert not any("airlift" in p.lower() for p in paths)
-              print("Verified IPA: RUIZENCLIENT, build 16, standard edition")
+              print("Verified IPA: RUIZENCLIENT, build 17, standard edition")
           PY
-          ls -lh RUIZENCLIENT-STANDARD-BUILD16-unsigned.ipa
+          ls -lh RUIZENCLIENT-STANDARD-BUILD17-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: RUIZENCLIENT-STANDARD-BUILD16-unsigned-IPA
-          path: RUIZENCLIENT-STANDARD-BUILD16-unsigned.ipa
+          name: RUIZENCLIENT-STANDARD-BUILD17-unsigned-IPA
+          path: RUIZENCLIENT-STANDARD-BUILD17-unsigned.ipa
           if-no-files-found: error
