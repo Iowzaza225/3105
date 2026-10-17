@@ -1,4 +1,4 @@
-name: Build RUIZEN Client On-Device Pairing (Build 13)
+name: Build RUIZENCLIENT (Build 14)
 
 on:
   workflow_dispatch:
@@ -61,18 +61,27 @@ jobs:
           xcrun swiftc -frontend -parse "$ROOT/ThreeOneOSFive/views/RuizenApplyPreflightView.swift"
           echo "On-device pairing host and UI staged for native iPhone build"
 
+      - name: Apply RUIZENCLIENT branding and direct Home route
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ci/apply_branding.py "$ROOT" branding/RuizenProfile.jpeg
+          xcrun swiftc -frontend -parse "$ROOT/ThreeOneOSFive/App.swift"
+          xcrun swiftc -frontend -parse "$ROOT/ThreeOneOSFive/views/DesignSystem.swift"
+          xcrun swiftc -frontend -parse "$ROOT/ThreeOneOSFive/views/SettingsView.swift"
+
       - name: Bundle prepared Swift source for inspection
         shell: bash
         run: |
           set -euo pipefail
           cd "$ROOT"
-          zip -q -r "$GITHUB_WORKSPACE/RUIZEN-CLIENT-BUILD13-AirLift-source.zip" .             -x '*/.DS_Store' '*/__MACOSX/*'
+          zip -q -r "$GITHUB_WORKSPACE/RUIZENCLIENT-BUILD14-AirLift-source.zip" .             -x '*/.DS_Store' '*/__MACOSX/*'
 
       - name: Upload prepared source
         uses: actions/upload-artifact@v4
         with:
-          name: RUIZEN-BUILD13-AirLift-Source
-          path: RUIZEN-CLIENT-BUILD13-AirLift-source.zip
+          name: RUIZEN-BUILD14-AirLift-Source
+          path: RUIZENCLIENT-BUILD14-AirLift-source.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -96,30 +105,30 @@ jobs:
           root = pathlib.Path(os.environ["ROOT"])
           path = root / "ThreeOneOSFive/Info.plist"
           info = plistlib.loads(path.read_bytes())
-          info["CFBundleDisplayName"] = "RUIZEN-CLIENT"
-          info["CFBundleName"] = "RUIZEN-CLIENT"
-          info["CFBundleVersion"] = "13"
+          info["CFBundleDisplayName"] = "RUIZENCLIENT"
+          info["CFBundleName"] = "RUIZENCLIENT"
+          info["CFBundleVersion"] = "14"
           path.write_bytes(plistlib.dumps(info))
           logo = root / "ThreeOneOSFive/Assets.xcassets/HTVLogo.imageset/HTVLogo.jpeg"
           icon = root / "ThreeOneOSFive/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
           if logo.is_file() and icon.parent.is_dir():
               subprocess.run(["sips","-s","format","png","-z","1024","1024",str(logo),"--out",str(icon)],check=True)
-          print("RUIZEN-CLIENT Build 13: native AirLift diagnostics")
+          print("RUIZENCLIENT Build 14: native AirLift diagnostics")
           PY
 
       - name: Build iPhone app with AirLift
         shell: bash
         run: |
           set -eo pipefail
-          xcodebuild -project "$PROJECT" -scheme "$SCHEME"             -configuration Release -sdk iphoneos             -derivedDataPath "$GITHUB_WORKSPACE/build"             PRODUCT_NAME=RUIZEN-CLIENT CURRENT_PROJECT_VERSION=13             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""             build 2>&1 | tee "$GITHUB_WORKSPACE/ruizen-build.log"
+          xcodebuild -project "$PROJECT" -scheme "$SCHEME"             -configuration Release -sdk iphoneos             -derivedDataPath "$GITHUB_WORKSPACE/build"             PRODUCT_NAME=RUIZENCLIENT CURRENT_PROJECT_VERSION=14             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""             build 2>&1 | tee "$GITHUB_WORKSPACE/ruizen-build.log"
 
       - name: Verify linked Rust on-device pairing entrypoints
         shell: bash
         run: |
           set -euo pipefail
-          APP="$(find build -type d -name 'RUIZEN-CLIENT.app' -print -quit)"
+          APP="$(find build -type d -name 'RUIZENCLIENT.app' -print -quit)"
           test -n "$APP"
-          BIN="$APP/RUIZEN-CLIENT"
+          BIN="$APP/RUIZENCLIENT"
           test -s "$BIN"
           xcrun nm -gU "$BIN" | grep -E ' _al_pairing_run_host$'
           xcrun nm -gU "$BIN" | grep -E ' _al_pairing_result_free$'
@@ -130,15 +139,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APP="$(find build -type d -name 'RUIZEN-CLIENT.app' -print -quit)"
+          APP="$(find build -type d -name 'RUIZENCLIENT.app' -print -quit)"
           test -n "$APP"
           python3 - "$APP" <<'PY'
           import pathlib, plistlib, sys
           app=pathlib.Path(sys.argv[1])
           info=plistlib.loads((app/"Info.plist").read_bytes())
-          info["CFBundleDisplayName"]="RUIZEN-CLIENT"
-          info["CFBundleName"]="RUIZEN-CLIENT"
-          info["CFBundleVersion"]="13"
+          info["CFBundleDisplayName"]="RUIZENCLIENT"
+          info["CFBundleName"]="RUIZENCLIENT"
+          info["CFBundleVersion"]="14"
           (app/"Info.plist").write_bytes(plistlib.dumps(info,fmt=plistlib.FMT_BINARY))
           for localized in app.glob("*.lproj/InfoPlist.strings"):
               try:
@@ -146,23 +155,23 @@ jobs:
               except Exception:
                   continue
               for key in ("CFBundleDisplayName","CFBundleName"):
-                  if key in values: values[key]="RUIZEN-CLIENT"
+                  if key in values: values[key]="RUIZENCLIENT"
               localized.write_bytes(plistlib.dumps(values,fmt=plistlib.FMT_BINARY))
-          assert info["CFBundleDisplayName"]=="RUIZEN-CLIENT"
-          assert info["CFBundleVersion"]=="13"
+          assert info["CFBundleDisplayName"]=="RUIZENCLIENT"
+          assert info["CFBundleVersion"] == "14"
           assert (app/info["CFBundleExecutable"]).is_file()
           print("Verified",info["CFBundleIdentifier"],info["CFBundleVersion"])
           PY
           mkdir -p ipa/Payload
           cp -R "$APP" ipa/Payload/
-          (cd ipa && /usr/bin/zip -qry "$GITHUB_WORKSPACE/RUIZEN-CLIENT-BUILD13-AirLift-unsigned.ipa" Payload)
-          unzip -tq RUIZEN-CLIENT-BUILD13-AirLift-unsigned.ipa
+          (cd ipa && /usr/bin/zip -qry "$GITHUB_WORKSPACE/RUIZENCLIENT-BUILD14-AirLift-unsigned.ipa" Payload)
+          unzip -tq RUIZENCLIENT-BUILD14-AirLift-unsigned.ipa
 
-      - name: Upload Build 13 unsigned IPA
+      - name: Upload Build 14 unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: RUIZEN-CLIENT-BUILD13-AirLift-unsigned-IPA
-          path: RUIZEN-CLIENT-BUILD13-AirLift-unsigned.ipa
+          name: RUIZENCLIENT-BUILD14-AirLift-unsigned-IPA
+          path: RUIZENCLIENT-BUILD14-AirLift-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
 
@@ -170,6 +179,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: RUIZEN-BUILD13-AirLift-failure-log
+          name: RUIZEN-BUILD14-AirLift-failure-log
           path: ruizen-build.log
           if-no-files-found: ignore
