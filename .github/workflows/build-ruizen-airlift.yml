@@ -1,10 +1,11 @@
-name: Build RUIZEN AirLift iOS27 (isolated test)
+name: Build RUIZEN Client iOS27 AirLift (Build 12)
 
 on:
   workflow_dispatch:
   push:
     branches:
       - feat/ruizen-airlift-rsd-ios27
+      - main
 
 permissions:
   contents: read
