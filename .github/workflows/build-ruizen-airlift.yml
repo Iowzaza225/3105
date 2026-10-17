@@ -74,7 +74,7 @@ jobs:
           test -s "$LIB"
           shasum -a 256 "$LIB"
           file "$LIB"
-          grep -q 'force_load' "$PROJECT"
+          grep -q 'force_load' "$PROJECT/project.pbxproj"
 
       - name: Configure RUIZEN identity
         shell: bash
