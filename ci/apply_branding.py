@@ -26,7 +26,7 @@ info_path = app / 'Info.plist'
 info = plistlib.loads(info_path.read_bytes())
 info['CFBundleDisplayName'] = 'RUIZENCLIENT'
 info['CFBundleName'] = 'RUIZENCLIENT'
-info['CFBundleVersion'] = '14'
+info['CFBundleVersion'] = '15'
 info_path.write_bytes(plistlib.dumps(info))
 shutil.copyfile(asset, app / 'Assets.xcassets/HTVLogo.imageset/HTVLogo.jpeg')
 # Guards cover routing, display strings, licensing identity and asset provenance.
@@ -42,4 +42,4 @@ for p in app.rglob('*'):
         assert 'VIPERX' not in p.read_text(), str(p)
 assert 'Text("CLIENT")' in (app/'views/DesignSystem.swift').read_text()
 assert hashlib.sha256(asset.read_bytes()).digest() == hashlib.sha256((app/'Assets.xcassets/HTVLogo.imageset/HTVLogo.jpeg').read_bytes()).digest()
-print('Verified RUIZENCLIENT Build 14: direct Home after license, unchanged license checks, no VIPERX display strings, new supplied logo')
+print('Verified RUIZENCLIENT Build 15: direct Home after license, unchanged license checks, no VIPERX display strings, new supplied logo')

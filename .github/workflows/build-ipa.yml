@@ -1,7 +1,10 @@
-name: Legacy RUIZEN Build 11 (manual backup)
+name: Build RUIZENCLIENT Standard (Build 15)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - release/ruizenclient-standard-build15
 
 jobs:
   build:
@@ -55,7 +58,7 @@ jobs:
       - name: Upload base source snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: RUIZEN-CLIENT-base-source-snapshot
+          name: RUIZENCLIENT-base-source-snapshot
           path: RUIZEN_CLIENT_BUILD10.zip
           if-no-files-found: error
 
@@ -63,20 +66,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 ci/apply_branding.py "$ROOT" branding/RuizenProfile.jpeg
           python3 - <<'PY'
           import os, pathlib, plistlib, subprocess
           root = pathlib.Path(os.environ["ROOT"])
           p = root / "ThreeOneOSFive/Info.plist"
           info = plistlib.loads(p.read_bytes())
-          info["CFBundleDisplayName"] = "RUIZEN-CLIENT"
-          info["CFBundleName"] = "RUIZEN-CLIENT"
-          info["CFBundleVersion"] = "11"
+          info["CFBundleDisplayName"] = "RUIZENCLIENT"
+          info["CFBundleName"] = "RUIZENCLIENT"
+          info["CFBundleVersion"] = "15"
           p.write_bytes(plistlib.dumps(info))
           logo = root / "ThreeOneOSFive/Assets.xcassets/HTVLogo.imageset/HTVLogo.jpeg"
           icon = root / "ThreeOneOSFive/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
           subprocess.run(["sips", "-s", "format", "png", "-z", "1024", "1024", str(logo), "--out", str(icon)], check=True)
           assert icon.read_bytes().startswith(b"\x89PNG")
-          print("RUIZEN-CLIENT: source name and logo prepared, build 11")
+          assert not (root / "ThreeOneOSFive/native").exists(), "Unexpected native bridge in standard build"
+          pbx = (root / "ThreeOneOSFive.xcodeproj/project.pbxproj").read_text()
+          assert "airlift" not in pbx.lower(), "Unexpected AirLift linkage"
+          assert "ContentView()" in (root / "ThreeOneOSFive/App.swift").read_text()
+          print("Verified RUIZENCLIENT STANDARD build 15: no AirLift source or linkage")
           PY
 
       - name: Inspect project
@@ -96,8 +104,8 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \
-            PRODUCT_NAME="RUIZEN-CLIENT" \
-            CURRENT_PROJECT_VERSION=11 \
+            PRODUCT_NAME="RUIZENCLIENT" \
+            CURRENT_PROJECT_VERSION=15 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -119,15 +127,15 @@ jobs:
           app = pathlib.Path(sys.argv[1])
           p = app / "Info.plist"
           info = plistlib.loads(p.read_bytes())
-          info["CFBundleDisplayName"] = "RUIZEN-CLIENT"
-          info["CFBundleName"] = "RUIZEN-CLIENT"
-          info["CFBundleVersion"] = "11"
+          info["CFBundleDisplayName"] = "RUIZENCLIENT"
+          info["CFBundleName"] = "RUIZENCLIENT"
+          info["CFBundleVersion"] = "15"
           p.write_bytes(plistlib.dumps(info, fmt=plistlib.FMT_BINARY))
           for localized in app.glob("*.lproj/InfoPlist.strings"):
               subprocess.run(["plutil", "-convert", "xml1", str(localized)], check=True)
               values = plistlib.loads(localized.read_bytes())
               for key in ("CFBundleDisplayName", "CFBundleName"):
-                  if key in values: values[key] = "RUIZEN-CLIENT"
+                  if key in values: values[key] = "RUIZENCLIENT"
               localized.write_bytes(plistlib.dumps(values, fmt=plistlib.FMT_BINARY))
           assert info["CFBundleIdentifier"] == "com.apple.mobile.MobileHouseArrest"
           assert (app / info["CFBundleExecutable"]).is_file()
@@ -135,15 +143,27 @@ jobs:
           print("Verified packaged app:", info["CFBundleDisplayName"], info["CFBundleName"], info["CFBundleVersion"])
           PY
 
-          rm -rf Payload RUIZEN-CLIENT-unsigned.ipa
+          rm -rf Payload RUIZENCLIENT-STANDARD-BUILD15-unsigned.ipa
           mkdir -p Payload
           cp -R "$APP" Payload/
-          /usr/bin/zip -qry RUIZEN-CLIENT-unsigned.ipa Payload
-          ls -lh RUIZEN-CLIENT-unsigned.ipa
+          /usr/bin/zip -qry RUIZENCLIENT-STANDARD-BUILD15-unsigned.ipa Payload
+          python3 - <<'PY'
+          import zipfile, plistlib
+          with zipfile.ZipFile("RUIZENCLIENT-STANDARD-BUILD15-unsigned.ipa") as z:
+              paths = z.namelist()
+              app_info = next(p for p in paths if p.startswith("Payload/") and p.count("/")==2 and p.endswith("/Info.plist"))
+              info = plistlib.loads(z.read(app_info))
+              assert info["CFBundleName"] == "RUIZENCLIENT"
+              assert info["CFBundleDisplayName"] == "RUIZENCLIENT"
+              assert info["CFBundleVersion"] == "15"
+              assert not any("airlift" in p.lower() for p in paths)
+              print("Verified IPA: RUIZENCLIENT, build 15, standard edition")
+          PY
+          ls -lh RUIZENCLIENT-STANDARD-BUILD15-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: RUIZEN-CLIENT-BUILD11-unsigned-IPA
-          path: RUIZEN-CLIENT-unsigned.ipa
+          name: RUIZENCLIENT-STANDARD-BUILD15-unsigned-IPA
+          path: RUIZENCLIENT-STANDARD-BUILD15-unsigned.ipa
           if-no-files-found: error
