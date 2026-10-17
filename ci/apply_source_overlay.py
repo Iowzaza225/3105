@@ -55,6 +55,14 @@ def main():
                 path.write_bytes(contents)
                 print(f"Added: {relative}", flush=True)
 
+    # Swift's URL.setResourceValues mutates the URL receiver; fix the declaration
+    # retained in the preflight source archive before compiling.
+    readiness = root / "ThreeOneOSFive/helpers/RuizenDeviceReadiness.swift"
+    source = readiness.read_text()
+    original = "let dest = Self.pairingURL"
+    assert source.count(original) == 1, "Unexpected pairing destination declaration"
+    readiness.write_text(source.replace(original, "var dest = Self.pairingURL", 1))
+
     required = [
         "ThreeOneOSFive/native/RuizenNativeBridge.m",
         "ThreeOneOSFive/helpers/RuizenDeviceReadiness.swift",
