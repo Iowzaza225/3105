@@ -112,8 +112,20 @@ jobs:
           import pathlib, plistlib, sys
           app=pathlib.Path(sys.argv[1])
           info=plistlib.loads((app/"Info.plist").read_bytes())
-          assert info["CFBundleDisplayName"]=="RUIZEN-CLIENT", info
-          assert info["CFBundleVersion"]=="12", info
+          info["CFBundleDisplayName"]="RUIZEN-CLIENT"
+          info["CFBundleName"]="RUIZEN-CLIENT"
+          info["CFBundleVersion"]="12"
+          (app/"Info.plist").write_bytes(plistlib.dumps(info,fmt=plistlib.FMT_BINARY))
+          for localized in app.glob("*.lproj/InfoPlist.strings"):
+              try:
+                  values=plistlib.loads(localized.read_bytes())
+              except Exception:
+                  continue
+              for key in ("CFBundleDisplayName","CFBundleName"):
+                  if key in values: values[key]="RUIZEN-CLIENT"
+              localized.write_bytes(plistlib.dumps(values,fmt=plistlib.FMT_BINARY))
+          assert info["CFBundleDisplayName"]=="RUIZEN-CLIENT"
+          assert info["CFBundleVersion"]=="12"
           assert (app/info["CFBundleExecutable"]).is_file()
           print("Verified",info["CFBundleIdentifier"],info["CFBundleVersion"])
           PY
