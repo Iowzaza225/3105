@@ -113,6 +113,157 @@ jobs:
           set -eo pipefail
           xcodebuild -project "$PROJECT" -scheme "$SCHEME"             -configuration Release -sdk iphoneos             -derivedDataPath "$GITHUB_WORKSPACE/build"             PRODUCT_NAME=RUIZEN-CLIENT CURRENT_PROJECT_VERSION=13             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""             build 2>&1 | tee "$GITHUB_WORKSPACE/ruizen-build.log"
 
+      - name: Verify linked Rust on-device pairing entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$(find build -type d -name 'RUIZEN-CLIENT.app' -print -quit)"
+          test -n "$APP"
+          BIN="$APP/RUIZEN-CLIENT"
+          test -s "$BIN"
+          xcrun nm -gU "$BIN" | grep -E ' _al_pairing_run_host        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$(find build -type d -name 'RUIZEN-CLIENT.app' -print -quit)"
+          test -n "$APP"
+          python3 - "$APP" <<'PY'
+          import pathlib, plistlib, sys
+          app=pathlib.Path(sys.argv[1])
+          info=plistlib.loads((app/"Info.plist").read_bytes())
+          info["CFBundleDisplayName"]="RUIZEN-CLIENT"
+          info["CFBundleName"]="RUIZEN-CLIENT"
+          info["CFBundleVersion"]="13"
+          (app/"Info.plist").write_bytes(plistlib.dumps(info,fmt=plistlib.FMT_BINARY))
+          for localized in app.glob("*.lproj/InfoPlist.strings"):
+              try:
+                  values=plistlib.loads(localized.read_bytes())
+              except Exception:
+                  continue
+              for key in ("CFBundleDisplayName","CFBundleName"):
+                  if key in values: values[key]="RUIZEN-CLIENT"
+              localized.write_bytes(plistlib.dumps(values,fmt=plistlib.FMT_BINARY))
+          assert info["CFBundleDisplayName"]=="RUIZEN-CLIENT"
+          assert info["CFBundleVersion"]=="13"
+          assert (app/info["CFBundleExecutable"]).is_file()
+          print("Verified",info["CFBundleIdentifier"],info["CFBundleVersion"])
+          PY
+          mkdir -p ipa/Payload
+          cp -R "$APP" ipa/Payload/
+          (cd ipa && /usr/bin/zip -qry "$GITHUB_WORKSPACE/RUIZEN-CLIENT-BUILD13-AirLift-unsigned.ipa" Payload)
+          unzip -tq RUIZEN-CLIENT-BUILD13-AirLift-unsigned.ipa
+
+      - name: Upload Build 13 unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUIZEN-CLIENT-BUILD13-AirLift-unsigned-IPA
+          path: RUIZEN-CLIENT-BUILD13-AirLift-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUIZEN-BUILD13-AirLift-failure-log
+          path: ruizen-build.log
+          if-no-files-found: ignore
+
+          xcrun nm -gU "$BIN" | grep -E ' _al_pairing_result_free        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$(find build -type d -name 'RUIZEN-CLIENT.app' -print -quit)"
+          test -n "$APP"
+          python3 - "$APP" <<'PY'
+          import pathlib, plistlib, sys
+          app=pathlib.Path(sys.argv[1])
+          info=plistlib.loads((app/"Info.plist").read_bytes())
+          info["CFBundleDisplayName"]="RUIZEN-CLIENT"
+          info["CFBundleName"]="RUIZEN-CLIENT"
+          info["CFBundleVersion"]="13"
+          (app/"Info.plist").write_bytes(plistlib.dumps(info,fmt=plistlib.FMT_BINARY))
+          for localized in app.glob("*.lproj/InfoPlist.strings"):
+              try:
+                  values=plistlib.loads(localized.read_bytes())
+              except Exception:
+                  continue
+              for key in ("CFBundleDisplayName","CFBundleName"):
+                  if key in values: values[key]="RUIZEN-CLIENT"
+              localized.write_bytes(plistlib.dumps(values,fmt=plistlib.FMT_BINARY))
+          assert info["CFBundleDisplayName"]=="RUIZEN-CLIENT"
+          assert info["CFBundleVersion"]=="13"
+          assert (app/info["CFBundleExecutable"]).is_file()
+          print("Verified",info["CFBundleIdentifier"],info["CFBundleVersion"])
+          PY
+          mkdir -p ipa/Payload
+          cp -R "$APP" ipa/Payload/
+          (cd ipa && /usr/bin/zip -qry "$GITHUB_WORKSPACE/RUIZEN-CLIENT-BUILD13-AirLift-unsigned.ipa" Payload)
+          unzip -tq RUIZEN-CLIENT-BUILD13-AirLift-unsigned.ipa
+
+      - name: Upload Build 13 unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUIZEN-CLIENT-BUILD13-AirLift-unsigned-IPA
+          path: RUIZEN-CLIENT-BUILD13-AirLift-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUIZEN-BUILD13-AirLift-failure-log
+          path: ruizen-build.log
+          if-no-files-found: ignore
+
+          xcrun nm -gU "$BIN" | grep -E ' _tunnel_create_remotexpc_multihost        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$(find build -type d -name 'RUIZEN-CLIENT.app' -print -quit)"
+          test -n "$APP"
+          python3 - "$APP" <<'PY'
+          import pathlib, plistlib, sys
+          app=pathlib.Path(sys.argv[1])
+          info=plistlib.loads((app/"Info.plist").read_bytes())
+          info["CFBundleDisplayName"]="RUIZEN-CLIENT"
+          info["CFBundleName"]="RUIZEN-CLIENT"
+          info["CFBundleVersion"]="13"
+          (app/"Info.plist").write_bytes(plistlib.dumps(info,fmt=plistlib.FMT_BINARY))
+          for localized in app.glob("*.lproj/InfoPlist.strings"):
+              try:
+                  values=plistlib.loads(localized.read_bytes())
+              except Exception:
+                  continue
+              for key in ("CFBundleDisplayName","CFBundleName"):
+                  if key in values: values[key]="RUIZEN-CLIENT"
+              localized.write_bytes(plistlib.dumps(values,fmt=plistlib.FMT_BINARY))
+          assert info["CFBundleDisplayName"]=="RUIZEN-CLIENT"
+          assert info["CFBundleVersion"]=="13"
+          assert (app/info["CFBundleExecutable"]).is_file()
+          print("Verified",info["CFBundleIdentifier"],info["CFBundleVersion"])
+          PY
+          mkdir -p ipa/Payload
+          cp -R "$APP" ipa/Payload/
+          (cd ipa && /usr/bin/zip -qry "$GITHUB_WORKSPACE/RUIZEN-CLIENT-BUILD13-AirLift-unsigned.ipa" Payload)
+          unzip -tq RUIZEN-CLIENT-BUILD13-AirLift-unsigned.ipa
+
+      - name: Upload Build 13 unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUIZEN-CLIENT-BUILD13-AirLift-unsigned-IPA
+          path: RUIZEN-CLIENT-BUILD13-AirLift-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUIZEN-BUILD13-AirLift-failure-log
+          path: ruizen-build.log
+          if-no-files-found: ignore
+
+          echo "Verified: prebuilt Rust RPPairing host and RSD tunnel symbols are linked into iPhone app"
+
       - name: Package and verify unsigned IPA
         shell: bash
         run: |
