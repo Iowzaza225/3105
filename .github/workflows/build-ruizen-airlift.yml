@@ -1,0 +1,152 @@
+name: Build RUIZEN Client iOS27 AirLift (Build 12)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/ruizen-airlift-rsd-ios27
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout RUIZEN project
+        uses: actions/checkout@v4
+
+      - name: Select Xcode environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d /Applications/Xcode_26.3.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+          else
+            echo "Pinned Xcode 26.3 not found; using runner-selected version"
+          fi
+          xcodebuild -version
+
+      - name: Extract original Build 10 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q RUIZEN_CLIENT_BUILD10.zip -d extracted
+          ROOT="$(find extracted -type d -name 'ThreeOneOSFive.xcodeproj' -print -quit | xargs dirname)"
+          test -n "$ROOT"
+          test -d "$ROOT/ThreeOneOSFive.xcodeproj"
+          if [ -d overlay ]; then cp -R overlay/. "$ROOT/"; fi
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "PROJECT=$ROOT/ThreeOneOSFive.xcodeproj" >> "$GITHUB_ENV"
+          echo "SCHEME=3105" >> "$GITHUB_ENV"
+
+      - name: Apply iOS27 AirLift source overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ci/apply_source_overlay.py "$ROOT" ci/ruizen_ios27_overlay_delta.b64
+          plutil -lint "$ROOT/ThreeOneOSFive/Info.plist"
+          xcrun swiftc -frontend -parse "$ROOT/ThreeOneOSFive/helpers/RuizenDeviceReadiness.swift"
+          xcrun swiftc -frontend -parse "$ROOT/ThreeOneOSFive/views/RuizenApplyPreflightView.swift"
+
+      - name: Bundle prepared Swift source for inspection
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$ROOT"
+          zip -q -r "$GITHUB_WORKSPACE/RUIZEN-CLIENT-BUILD12-AirLift-source.zip" .             -x '*/.DS_Store' '*/__MACOSX/*'
+
+      - name: Upload prepared source
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUIZEN-BUILD12-AirLift-Source
+          path: RUIZEN-CLIENT-BUILD12-AirLift-source.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Stage pinned precompiled AirLift Rust binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$ROOT/scripts/enable_airlift_macos.sh"
+          LIB="$ROOT/ThirdParty/AirliftFFI.xcframework/ios-arm64/libairlift_ffi.a"
+          test -s "$LIB"
+          shasum -a 256 "$LIB"
+          file "$LIB"
+          grep -q 'force_load' "$PROJECT/project.pbxproj"
+
+      - name: Configure RUIZEN identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, plistlib, subprocess
+          root = pathlib.Path(os.environ["ROOT"])
+          path = root / "ThreeOneOSFive/Info.plist"
+          info = plistlib.loads(path.read_bytes())
+          info["CFBundleDisplayName"] = "RUIZEN-CLIENT"
+          info["CFBundleName"] = "RUIZEN-CLIENT"
+          info["CFBundleVersion"] = "12"
+          path.write_bytes(plistlib.dumps(info))
+          logo = root / "ThreeOneOSFive/Assets.xcassets/HTVLogo.imageset/HTVLogo.jpeg"
+          icon = root / "ThreeOneOSFive/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
+          if logo.is_file() and icon.parent.is_dir():
+              subprocess.run(["sips","-s","format","png","-z","1024","1024",str(logo),"--out",str(icon)],check=True)
+          print("RUIZEN-CLIENT Build 12: native AirLift diagnostics")
+          PY
+
+      - name: Build iPhone app with AirLift
+        shell: bash
+        run: |
+          set -eo pipefail
+          xcodebuild -project "$PROJECT" -scheme "$SCHEME"             -configuration Release -sdk iphoneos             -derivedDataPath "$GITHUB_WORKSPACE/build"             PRODUCT_NAME=RUIZEN-CLIENT CURRENT_PROJECT_VERSION=12             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""             build 2>&1 | tee "$GITHUB_WORKSPACE/ruizen-build.log"
+
+      - name: Package and verify unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$(find build -type d -name 'RUIZEN-CLIENT.app' -print -quit)"
+          test -n "$APP"
+          python3 - "$APP" <<'PY'
+          import pathlib, plistlib, sys
+          app=pathlib.Path(sys.argv[1])
+          info=plistlib.loads((app/"Info.plist").read_bytes())
+          info["CFBundleDisplayName"]="RUIZEN-CLIENT"
+          info["CFBundleName"]="RUIZEN-CLIENT"
+          info["CFBundleVersion"]="12"
+          (app/"Info.plist").write_bytes(plistlib.dumps(info,fmt=plistlib.FMT_BINARY))
+          for localized in app.glob("*.lproj/InfoPlist.strings"):
+              try:
+                  values=plistlib.loads(localized.read_bytes())
+              except Exception:
+                  continue
+              for key in ("CFBundleDisplayName","CFBundleName"):
+                  if key in values: values[key]="RUIZEN-CLIENT"
+              localized.write_bytes(plistlib.dumps(values,fmt=plistlib.FMT_BINARY))
+          assert info["CFBundleDisplayName"]=="RUIZEN-CLIENT"
+          assert info["CFBundleVersion"]=="12"
+          assert (app/info["CFBundleExecutable"]).is_file()
+          print("Verified",info["CFBundleIdentifier"],info["CFBundleVersion"])
+          PY
+          mkdir -p ipa/Payload
+          cp -R "$APP" ipa/Payload/
+          (cd ipa && /usr/bin/zip -qry "$GITHUB_WORKSPACE/RUIZEN-CLIENT-BUILD12-AirLift-unsigned.ipa" Payload)
+          unzip -tq RUIZEN-CLIENT-BUILD12-AirLift-unsigned.ipa
+
+      - name: Upload Build 12 unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUIZEN-CLIENT-BUILD12-AirLift-unsigned-IPA
+          path: RUIZEN-CLIENT-BUILD12-AirLift-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUIZEN-BUILD12-AirLift-failure-log
+          path: ruizen-build.log
+          if-no-files-found: ignore
